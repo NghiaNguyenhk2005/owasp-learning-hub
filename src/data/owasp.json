@@ -1,0 +1,338 @@
+{
+  "lessons": [
+    {
+      "id": "A01",
+      "name": "Broken Access Control",
+      "shortDesc": "Người dùng truy cập tài nguyên hoặc thực hiện hành động vượt quá quyền hạn của họ.",
+      "concept": "Broken Access Control là lỗ hổng phổ biến nhất trong OWASP Top 10 (2021). Nó xảy ra khi ứng dụng không kiểm tra đúng quyền của người dùng trước khi cho phép họ xem dữ liệu hoặc thực hiện thao tác.",
+      "conceptDetails": [
+        { "type": "callout", "variant": "danger", "content": "Năm 2021, 94% ứng dụng web được kiểm tra có ít nhất một dạng broken access control. Đây là lý do nó đứng #1 trong OWASP Top 10." },
+        { "type": "text", "content": "Có nhiều dạng broken access control phổ biến: IDOR (Insecure Direct Object Reference) — truy cập tài nguyên người khác qua ID; leo thang đặc quyền theo chiều dọc — user thường truy cập chức năng admin; leo thang đặc quyền theo chiều ngang — user A xem dữ liệu của user B." },
+        { "type": "code", "language": "http", "content": "# IDOR cơ bản\nGET /api/profile?user_id=1001   → dữ liệu của bạn\nGET /api/profile?user_id=1002   → dữ liệu của người khác (!)\n\n# Leo thang đặc quyền\nGET /admin/users               → 403 Forbidden (đúng)\nGET /ADMIN/users               → 200 OK (sai — bypass bằng case)" },
+        { "type": "callout", "variant": "info", "content": "Nguyên tắc cốt lõi: luôn kiểm tra quyền ở phía server, không bao giờ tin tưởng dữ liệu từ client (URL, cookie, hidden field)." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Vụ rò rỉ dữ liệu Optus 2022", "text": "Hacker truy cập API endpoint không được bảo vệ, lặp qua các ID tuần tự và thu thập thông tin cá nhân của 9.8 triệu khách hàng Úc. Không cần exploit phức tạp — chỉ cần thay đổi số trong URL.", "note": "Toàn bộ vụ vi phạm xảy ra vì một API endpoint công khai không yêu cầu xác thực." },
+        { "title": "Ví dụ code: Lỗ hổng và cách sửa", "text": "Pattern phổ biến trong Node.js/Express — endpoint trả về dữ liệu chỉ dựa vào ID từ URL mà không kiểm tra ownership:", "code": "// ❌ LỖ HỔNG\napp.get('/api/orders/:id', authenticate, async (req, res) => {\n  const order = await db.findOrder(req.params.id)\n  return res.json(order)  // Bất kỳ user đã login nào cũng xem được!\n})\n\n// ✅ AN TOÀN\napp.get('/api/orders/:id', authenticate, async (req, res) => {\n  const order = await db.findOrder(req.params.id)\n  if (!order) return res.status(404).json({ error: 'Not found' })\n  if (order.userId !== req.user.id)\n    return res.status(403).json({ error: 'Forbidden' })\n  return res.json(order)\n})", "language": "javascript" }
+      ],
+      "bestPractices": "Áp dụng nguyên tắc deny-by-default: từ chối tất cả trừ những gì được cho phép tường minh.",
+      "bestPracticesList": [
+        "Deny by default — chặn tất cả, chỉ mở những gì cần thiết.",
+        "Luôn kiểm tra ownership khi truy cập tài nguyên theo ID.",
+        "Không expose ID tuần tự — dùng UUID để tránh enumeration.",
+        "Ghi log tất cả lỗi access control và cảnh báo khi có nhiều lần thất bại.",
+        "Unit test các access control rule — đặc biệt là test cross-user access.",
+        "Review CORS config: không cho phép origin không tin cậy gọi API có auth."
+      ],
+      "quiz": {
+        "question": "Một ứng dụng banking cho phép xem lịch sử giao dịch qua GET /api/transactions?account=12345. User A đổi số tài khoản thành 67890 và xem được giao dịch của User B. Đây là lỗ hổng nào?",
+        "options": ["SQL Injection — vì URL chứa tham số database", "Broken Access Control (IDOR) — vì không kiểm tra ownership", "Broken Authentication — vì user chưa đăng nhập", "Security Misconfiguration — vì CORS không được cấu hình"],
+        "correct": 1,
+        "explanation": "Đây là IDOR — một dạng Broken Access Control. User đã đăng nhập (authentication OK) nhưng ứng dụng không kiểm tra xem tài khoản 67890 có thuộc về user đó không (authorization FAIL)."
+      },
+      "tryAndCode": {
+        "language": "javascript",
+        "description": "Hàm isAuthorized bên dưới luôn trả về true — mọi user đều có thể truy cập mọi tài nguyên. Sửa lại để chỉ cho phép userId truy cập đúng resourceOwnerId của họ.",
+        "initialCode": "function isAuthorized(userId, resourceOwnerId) {\n  // BUG: luôn trả về true\n  return true;\n}",
+        "testCases": [
+          { "input": [1, 1], "expected": true },
+          { "input": [1, 2], "expected": false },
+          { "input": [5, 5], "expected": true },
+          { "input": [3, 7], "expected": false }
+        ],
+        "solution": "function isAuthorized(userId, resourceOwnerId) {\n  return userId === resourceOwnerId;\n}",
+        "hint": "So sánh trực tiếp userId với resourceOwnerId."
+      }
+    },
+    {
+      "id": "A02",
+      "name": "Cryptographic Failures",
+      "shortDesc": "Dữ liệu nhạy cảm bị lộ do mã hóa yếu, sai, hoặc không có mã hóa.",
+      "concept": "Trước đây gọi là 'Sensitive Data Exposure'. Lỗ hổng xảy ra khi ứng dụng không bảo vệ đúng cách dữ liệu nhạy cảm như mật khẩu, thẻ tín dụng, thông tin y tế — khi lưu trữ lẫn khi truyền tải.",
+      "conceptDetails": [
+        { "type": "text", "content": "Các dạng phổ biến: truyền dữ liệu qua HTTP thay vì HTTPS, dùng thuật toán mã hóa lỗi thời (MD5, SHA1, DES), không mã hóa dữ liệu nhạy cảm trong database, expose private key hoặc credential trong source code." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Lưu password dạng plain text\nawait db.save({ username, password })  // thảm họa khi DB bị leak\n\n// ❌ Dùng MD5 — crack được bằng rainbow table trong vài giây\nconst hash = md5(password)\n\n// ✅ bcrypt với cost factor đủ cao\nconst hash = await bcrypt.hash(password, 12)\n\n// ❌ Hardcode secret trong code\nconst JWT_SECRET = 'mysecret123'  // bị lộ khi push lên GitHub!\n\n// ✅ Đọc từ environment variable\nconst JWT_SECRET = process.env.JWT_SECRET" },
+        { "type": "callout", "variant": "warning", "content": "GitHub có scanner tự động phát hiện credential bị commit. Nhưng secret đã push lên public repo coi như đã bị lộ — cần revoke và rotate ngay lập tức, không chỉ xóa commit." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Adobe breach 2013", "text": "Adobe lưu 153 triệu mật khẩu người dùng bằng mã hóa DES (không phải hash) và dùng chung key cho tất cả. Attacker có thể crack hàng loạt do nhiều user dùng cùng password có cùng ciphertext.", "note": "Mã hóa (encryption) và hash là hai thứ khác nhau. Password phải được hash một chiều, không phải mã hóa hai chiều." },
+        { "title": "HTTPS và certificate pinning", "text": "Dữ liệu nhạy cảm phải được mã hóa khi truyền tải. HTTP không có bảo vệ — bất kỳ ai trong cùng mạng đều có thể đọc được:", "code": "# HTTP — plain text, ai cũng đọc được\nPOST http://example.com/login\nContent-Type: application/json\n{\"username\": \"alice\", \"password\": \"secret123\"}\n\n# ✅ HTTPS — encrypted\n# Cấu hình HSTS để force HTTPS\nStrict-Transport-Security: max-age=31536000; includeSubDomains; preload", "language": "http" }
+      ],
+      "bestPractices": "Mã hóa mọi dữ liệu nhạy cảm khi lưu trữ và truyền tải. Dùng các thuật toán hiện đại và được kiểm chứng.",
+      "bestPracticesList": [
+        "Dùng HTTPS cho toàn bộ traffic, bật HSTS để ngăn downgrade attack.",
+        "Hash password với bcrypt (cost≥10) hoặc argon2 — không dùng MD5, SHA1.",
+        "Không hardcode secret trong source code — dùng biến môi trường hoặc secret manager.",
+        "Mã hóa dữ liệu nhạy cảm trong DB (PII, thẻ tín dụng, thông tin y tế) với AES-256.",
+        "Dùng TLS 1.2+ và disable các cipher suite yếu (RC4, 3DES).",
+        "Rotate key và credential định kỳ, revoke ngay khi nghi ngờ bị lộ."
+      ],
+      "quiz": {
+        "question": "Developer lưu mật khẩu người dùng bằng: db.save({ password: sha256(userPassword) }). Vấn đề chính là gì?",
+        "options": ["SHA256 không phải hàm hash, đây là mã hóa", "SHA256 quá chậm, làm app lag", "SHA256 không có salt — dễ crack bằng rainbow table và tấn công dictionary", "Không có vấn đề gì, SHA256 là thuật toán an toàn"],
+        "correct": 2,
+        "explanation": "SHA256 không có salt — nhiều user dùng cùng password sẽ có cùng hash. Rainbow table (bảng tra cứu hash sẵn có) có thể reverse hàng triệu hash trong vài giây. Phải dùng bcrypt/argon2 vì chúng tự thêm salt ngẫu nhiên và được thiết kế chậm có chủ ý."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A03",
+      "name": "Injection",
+      "shortDesc": "Dữ liệu không tin cậy từ người dùng được interpreter thực thi như một câu lệnh.",
+      "concept": "Injection xảy ra khi ứng dụng gửi dữ liệu không được validate hoặc sanitize đến một interpreter — SQL engine, shell, LDAP server, XML parser... Attacker có thể thay đổi logic câu lệnh, đọc/xóa dữ liệu, hoặc thực thi lệnh hệ thống.",
+      "conceptDetails": [
+        { "type": "text", "content": "SQL Injection là dạng phổ biến nhất. Xảy ra khi developer nối chuỗi input của user trực tiếp vào câu SQL thay vì dùng parameterized query." },
+        { "type": "code", "language": "python", "content": "# ❌ LỖ HỔNG — nối chuỗi trực tiếp\nusername = request.form['username']  # attacker nhập: ' OR '1'='1\nquery = \"SELECT * FROM users WHERE username = '\" + username + \"'\"\n# → SELECT * FROM users WHERE username = '' OR '1'='1'\n# → trả về toàn bộ bảng users!\n\n# ✅ AN TOÀN — parameterized query\ncursor.execute(\"SELECT * FROM users WHERE username = %s\", (username,))" },
+        { "type": "callout", "variant": "warning", "content": "Injection không chỉ là SQL. Command injection, LDAP injection, XPath injection, và NoSQL injection cũng rất nguy hiểm và thường bị bỏ qua." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Heartland Payment Systems 2008", "text": "SQL Injection vào hệ thống xử lý thanh toán, đánh cắp thông tin 130 triệu thẻ tín dụng. Thiệt hại ước tính 140 triệu USD — một trong những vụ data breach lớn nhất lịch sử tính đến thời điểm đó.", "note": "Tất cả chỉ vì một vài câu SQL được nối chuỗi thay vì dùng prepared statement." },
+        { "title": "Anatomy của SQL Injection", "text": "Cách một login form điển hình bị bypass:", "code": "-- Query gốc (lỗ hổng):\nSELECT * FROM users WHERE username = '[INPUT]' AND password = '[INPUT]'\n\n-- Attacker nhập username: admin'--\n-- Câu SQL trở thành:\nSELECT * FROM users WHERE username = 'admin'--' AND password = 'anything'\n-- Phần sau -- bị comment out → đăng nhập thành công không cần password!", "language": "sql" },
+        { "title": "UNION-based injection — leo thang đến data dump", "text": "Sau khi xác nhận có injection, attacker dùng UNION để đọc bảng khác:", "code": "-- Tìm số cột của query gốc\n' ORDER BY 1--  (OK)\n' ORDER BY 3--  (Error) → có 2 cột\n\n-- Dump toàn bộ users\n' UNION SELECT username, password FROM users--", "language": "sql", "note": "Đây là lý do password phải được hash — ngay cả khi bị dump, attacker không dùng được ngay." }
+      ],
+      "bestPractices": "Không bao giờ tin tưởng input từ người dùng. Luôn tách biệt code và data.",
+      "bestPracticesList": [
+        "Dùng prepared statements / parameterized queries cho tất cả database query.",
+        "Dùng ORM (Sequelize, Prisma, SQLAlchemy...) — chúng tự handle parameterization.",
+        "Validate và whitelist input: chỉ chấp nhận đúng format cần thiết.",
+        "Principle of Least Privilege: DB user của app chỉ có quyền tối thiểu, không có DROP hay FILE.",
+        "Với shell command: dùng execFile thay exec, tránh nối chuỗi vào shell.",
+        "WAF có thể giúp nhưng không thay thế được code an toàn."
+      ],
+      "quiz": {
+        "question": "Developer viết query: `SELECT * FROM products WHERE id = ` + req.params.id. Attacker nhập id=1 OR 1=1. Điều gì xảy ra?",
+        "options": ["Ứng dụng bị crash vì SQL syntax error", "Chỉ trả về product có id=1 như bình thường", "Trả về toàn bộ bảng products vì OR 1=1 luôn đúng", "Attacker bị block vì OR không hợp lệ trong URL"],
+        "correct": 2,
+        "explanation": "Câu SQL trở thành: SELECT * FROM products WHERE id = 1 OR 1=1. Vì 1=1 luôn đúng, điều kiện WHERE luôn true → tất cả rows được trả về. Attacker có thể leo thang thêm bằng UNION để đọc bảng khác."
+      },
+      "tryAndCode": {
+        "language": "sql",
+        "description": "Database có bảng users(id, name, password). Form login kiểm tra: SELECT * FROM users WHERE name='[input]' AND password='[input]'. Thử bypass login admin mà không cần biết password — chỉ dùng SQL Injection trong ô username.",
+        "setupSql": "CREATE TABLE users (id INTEGER, name TEXT, password TEXT); INSERT INTO users VALUES (1, 'admin', 'supersecret123'); INSERT INTO users VALUES (2, 'alice', 'mypassword'); INSERT INTO users VALUES (3, 'bob', 'qwerty');",
+        "initialCode": "SELECT * FROM users WHERE name='admin' AND password=''",
+        "hint": "Thử kết thúc chuỗi bằng dấu ' rồi thêm -- để comment phần còn lại",
+        "solution": "SELECT * FROM users WHERE name='admin'--' AND password=''"
+      }
+    },
+    {
+      "id": "A04",
+      "name": "Insecure Design",
+      "shortDesc": "Lỗ hổng sinh ra từ thiết kế sai ngay từ đầu, không thể vá chỉ bằng code.",
+      "concept": "Insecure Design là category mới trong OWASP 2021, nhấn mạnh rằng nhiều lỗ hổng bắt nguồn từ quyết định thiết kế sai — không phải lỗi implementation. Ngay cả code hoàn hảo cũng không thể cứu vãn một thiết kế tệ.",
+      "conceptDetails": [
+        { "type": "text", "content": "Sự khác biệt quan trọng: Insecure Design (thiết kế sai) khác với Insecure Implementation (code sai). SQL Injection là implementation flaw — có thể sửa bằng prepared statement. Nhưng một hệ thống không có rate limiting hay audit log từ đầu là design flaw — cần thiết kế lại." },
+        { "type": "callout", "variant": "info", "content": "Threat Modeling là thực hành quan trọng: đặt câu hỏi 'kẻ tấn công sẽ làm gì với tính năng này?' ngay từ giai đoạn thiết kế. STRIDE (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) là framework phổ biến." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Insecure Design: flow reset password đoán được\n// Câu hỏi bảo mật 'Tên thú cưng đầu tiên?' — dễ đoán từ social media\nif (answers.petName === user.petName) allowPasswordReset()\n\n// ✅ Secure Design: gửi token ngẫu nhiên qua email đã verify\nconst token = crypto.randomBytes(32).toString('hex')\nawait db.saveResetToken(userId, token, expiresAt: Date.now() + 3600000)\nawait sendEmail(user.email, `Reset link: /reset?token=${token}`)\n// Token chỉ dùng một lần, hết hạn sau 1 giờ" },
+        { "type": "callout", "variant": "warning", "content": "Ví dụ thực tế: Instagram năm 2019 cho phép brute force OTP 6 chữ số qua nhiều IP — design flaw vì không có global rate limiting. Kẻ tấn công chiếm được bất kỳ tài khoản nào trong vài phút." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Flow đặt vé bị lạm dụng", "text": "Một hệ thống đặt vé concert thiết kế: user có 10 phút để hoàn thành thanh toán, nếu không vé được giải phóng. Attacker viết bot giữ hàng nghìn vé liên tục, không cho người dùng thật mua được — dù code không có bug nào.", "note": "Design fix: giới hạn số vé đang giữ per-account, yêu cầu xác thực thẻ trước khi giữ chỗ." },
+        { "title": "Thiếu audit log — không thể điều tra khi xảy ra sự cố", "text": "Một design flaw phổ biến là không có audit trail cho các hành động quan trọng:", "code": "// ❌ Không có audit log\nasync function deleteUser(adminId, targetUserId) {\n  await db.delete('users', targetUserId)\n  // Ai xóa? Khi nào? Không ai biết!\n}\n\n// ✅ Audit log mọi action quan trọng\nasync function deleteUser(adminId, targetUserId) {\n  await db.delete('users', targetUserId)\n  await auditLog.write({\n    action: 'DELETE_USER',\n    actor: adminId,\n    target: targetUserId,\n    timestamp: new Date(),\n    ip: req.ip\n  })\n}", "language": "javascript" }
+      ],
+      "bestPractices": "Tích hợp bảo mật vào quá trình thiết kế từ đầu (Security by Design), không phải add-on sau cùng.",
+      "bestPracticesList": [
+        "Thực hiện Threat Modeling cho mọi tính năng mới trước khi code.",
+        "Thiết kế flow với fail-safe defaults: từ chối mọi thứ trừ những gì được cho phép.",
+        "Giới hạn tài nguyên người dùng có thể consume (rate limit, quota, max items).",
+        "Yêu cầu xác thực nhiều bước cho các hành động có rủi ro cao (xóa tài khoản, chuyển tiền lớn).",
+        "Audit log tất cả hành động quan trọng với đầy đủ context (ai, khi nào, từ đâu).",
+        "Tách biệt môi trường: dev/staging không được dùng data production thật."
+      ],
+      "quiz": {
+        "question": "Ứng dụng gửi OTP 4 chữ số qua SMS để xác thực, không giới hạn số lần thử. Attacker có thể brute force qua bao nhiêu lần thử tối đa?",
+        "options": ["400 lần", "1,000 lần", "10,000 lần", "100,000 lần"],
+        "correct": 2,
+        "explanation": "OTP 4 chữ số có 10^4 = 10,000 tổ hợp (0000 đến 9999). Không có rate limiting → attacker brute force được trong vài phút. Đây là Insecure Design — cần ít nhất 6 chữ số, rate limit, và lockout sau vài lần sai."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A05",
+      "name": "Security Misconfiguration",
+      "shortDesc": "Cấu hình mặc định không an toàn, thiếu hardening, hoặc lộ thông tin hệ thống.",
+      "concept": "Security Misconfiguration là lỗ hổng phổ biến nhất về implementation. Xảy ra khi hệ thống được deploy với cấu hình mặc định không an toàn, permission quá rộng, tính năng không cần thiết còn bật, hoặc thông tin nhạy cảm bị lộ qua error message.",
+      "conceptDetails": [
+        { "type": "text", "content": "Các dạng phổ biến: trang admin không có authentication (phpMyAdmin, Kibana, Jenkins), error message lộ stack trace và version, default credential chưa đổi (admin/admin), S3 bucket public, debug mode bật trên production." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Lộ stack trace cho người dùng\napp.use((err, req, res, next) => {\n  res.status(500).json({\n    error: err.message,\n    stack: err.stack,  // Lộ đường dẫn file, version, logic nội bộ!\n    query: err.query   // Lộ cả câu SQL!\n  })\n})\n\n// ✅ Log chi tiết nội bộ, trả về thông báo chung cho client\napp.use((err, req, res, next) => {\n  logger.error({ err, req: { url: req.url, method: req.method } })\n  res.status(500).json({ error: 'Internal server error', requestId: req.id })\n})" },
+        { "type": "callout", "variant": "danger", "content": "Shodan.io là công cụ tìm kiếm cho các thiết bị và service lộ ra internet. Hàng triệu database MongoDB, Elasticsearch, Redis không có authentication được lập chỉ mục — bất kỳ ai cũng có thể đọc và xóa data." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Capital One 2019 — IAM misconfiguration", "text": "Một EC2 instance có IAM role với quyền quá rộng. Attacker khai thác SSRF để lấy credential từ metadata service, sau đó dùng credential đó để download 100 triệu hồ sơ khách hàng từ S3. Thiệt hại: 80 triệu USD tiền phạt.", "note": "Principle of Least Privilege áp dụng cho cả cloud IAM role, không chỉ user accounts." },
+        { "title": "HTTP Security Headers", "text": "Nhiều lỗ hổng có thể giảm thiểu chỉ bằng cách thêm HTTP headers đúng cách:", "code": "// Helmet.js cho Express — thêm hàng chục security headers chỉ một dòng\nimport helmet from 'helmet'\napp.use(helmet())\n\n// Các header quan trọng nhất:\n// Content-Security-Policy: ngăn XSS và data injection\n// X-Frame-Options: DENY  — ngăn clickjacking\n// X-Content-Type-Options: nosniff — ngăn MIME sniffing\n// Referrer-Policy: no-referrer — không leak URL qua Referer\n// Permissions-Policy: camera=(), microphone=() — disable APIs không dùng", "language": "javascript" }
+      ],
+      "bestPractices": "Hardening là quá trình liên tục — không chỉ làm một lần khi deploy.",
+      "bestPracticesList": [
+        "Xóa hoặc disable mọi tính năng, port, service không cần thiết.",
+        "Đổi tất cả default credential ngay sau khi cài đặt.",
+        "Không bao giờ hiển thị stack trace, version, hay thông tin nội bộ cho người dùng.",
+        "Dùng security headers (Content-Security-Policy, HSTS, X-Frame-Options...).",
+        "S3 bucket, blob storage: default private, chỉ public những gì cần thiết.",
+        "Scan định kỳ bằng công cụ như Trivy, OWASP ZAP, hoặc cloud security posture tools."
+      ],
+      "quiz": {
+        "question": "Developer deploy ứng dụng Node.js với NODE_ENV=development trên production. Hậu quả nghiêm trọng nhất có thể là gì?",
+        "options": ["App chạy chậm hơn vì không được optimize", "Stack trace và thông tin debug bị lộ cho người dùng cuối", "Database kết nối chậm hơn trong môi trường dev", "Không có hậu quả vì chỉ là biến môi trường"],
+        "correct": 1,
+        "explanation": "Nhiều framework (Express, Django...) trong development mode tự động hiển thị stack trace, biến môi trường, và thông tin debug khi có lỗi. Attacker dùng thông tin này để hiểu cấu trúc hệ thống và tìm điểm tấn công."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A06",
+      "name": "Vulnerable and Outdated Components",
+      "shortDesc": "Dùng thư viện, framework có lỗ hổng đã biết hoặc không còn được support.",
+      "concept": "Ứng dụng hiện đại phụ thuộc vào hàng trăm thư viện bên thứ ba. Một lỗ hổng trong bất kỳ dependency nào cũng có thể ảnh hưởng đến toàn bộ hệ thống — dù code của bạn hoàn hảo.",
+      "conceptDetails": [
+        { "type": "callout", "variant": "danger", "content": "Log4Shell (CVE-2021-44228) là lỗ hổng trong thư viện Log4j của Java — được dùng trong hàng trăm nghìn ứng dụng. CVSS score 10.0 (tối đa). Attacker có thể thực thi code từ xa chỉ bằng cách gửi một chuỗi đặc biệt vào bất kỳ input nào được log." },
+        { "type": "code", "language": "bash", "content": "# Kiểm tra dependency có lỗ hổng\nnpm audit                    # Node.js\npip-audit                    # Python\nmvn dependency-check:check   # Java/Maven\n\n# Kết quả mẫu:\n# critical  1  prototype-pollution  lodash <4.17.21\n# high      2  ReDoS               minimatch <3.0.5\n\n# Fix tự động (cẩn thận với breaking changes)\nnpm audit fix\nnpm audit fix --force  # force update major version" },
+        { "type": "text", "content": "Không chỉ là direct dependency — transitive dependency (dependency của dependency) cũng là mối nguy. Một project Node.js trung bình có 500-1000 packages, hầu hết là transitive." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Equifax breach 2017 — Apache Struts", "text": "Equifax không patch lỗ hổng Apache Struts (CVE-2017-5638) đã có fix 2 tháng trước đó. Attacker khai thác, đánh cắp dữ liệu của 147 triệu người Mỹ. Tiền phạt và settlement: 700 triệu USD.", "note": "Patch đã có sẵn 2 tháng. Thiếu quy trình update dependency thường xuyên là nguyên nhân trực tiếp." },
+        { "title": "Software Bill of Materials (SBOM)", "text": "SBOM là danh sách đầy đủ tất cả components trong ứng dụng — ngày càng được yêu cầu bởi các tổ chức lớn và chính phủ:", "code": "# Tạo SBOM với Syft\nsyft packages dir:. -o spdx-json > sbom.json\n\n# Scan SBOM với Grype để tìm lỗ hổng\ngrype sbom:./sbom.json\n\n# Tích hợp vào CI/CD pipeline\n# GitHub Actions: dùng anchore/sbom-action\n# GitLab: built-in dependency scanning", "language": "bash" }
+      ],
+      "bestPractices": "Treat dependencies như code của chính bạn — cần được review, update, và monitor thường xuyên.",
+      "bestPracticesList": [
+        "Chạy npm audit / pip-audit / mvn dependency-check trong CI/CD pipeline.",
+        "Dùng Dependabot (GitHub) hoặc Renovate để tự động tạo PR update dependency.",
+        "Chỉ dùng package từ nguồn tin cậy, có nhiều contributor, còn được maintain.",
+        "Pin version trong production để tránh bị ảnh hưởng bởi update ngoài ý muốn.",
+        "Subscribe security advisories của các framework và library bạn đang dùng.",
+        "Tạo SBOM và scan định kỳ — đặc biệt quan trọng với hệ thống critical."
+      ],
+      "quiz": {
+        "question": "Đội ngũ phát hiện thư viện ImageMagick đang dùng có CVE với CVSS 9.8 (Critical). Phản ứng đúng đắn nhất là gì?",
+        "options": ["Chờ đến sprint sau mới xử lý vì đang bận tính năng mới", "Xóa toàn bộ tính năng liên quan đến ImageMagick", "Đánh giá impact ngay, patch hoặc tìm workaround trong vài giờ, không đợi sprint", "Không cần lo vì chưa có báo cáo bị tấn công"],
+        "correct": 2,
+        "explanation": "CVSS 9.8 là Critical — thường đồng nghĩa với Remote Code Execution hoặc data breach. Cần response ngay: đánh giá xem ứng dụng của mình có bị ảnh hưởng không, patch lên version an toàn, hoặc implement workaround trong khi chờ patch chính thức."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A07",
+      "name": "Identification and Authentication Failures",
+      "shortDesc": "Xác thực yếu hoặc không đúng cách cho phép attacker giả mạo danh tính người dùng.",
+      "concept": "Lỗ hổng này bao gồm tất cả các vấn đề liên quan đến việc xác minh danh tính người dùng: mật khẩu yếu, brute force không bị giới hạn, session không được quản lý đúng, thiếu MFA cho tài khoản quan trọng.",
+      "conceptDetails": [
+        { "type": "text", "content": "Authentication (xác thực) là quá trình xác minh 'bạn là ai'. Authorization (phân quyền) là xác định 'bạn được làm gì'. Lỗ hổng ở A07 nằm ở bước đầu tiên — attacker vượt qua được xác thực, mọi phân quyền phía sau đều vô nghĩa." },
+        { "type": "callout", "variant": "danger", "content": "Credential stuffing: attacker dùng danh sách username/password từ các vụ data breach khác để đăng nhập. Hiệu quả cao vì ~65% người dùng dùng lại mật khẩu trên nhiều site." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Sai — hash MD5, không có salt\nconst hash = md5(password)  // crack được bằng rainbow table\n\n// ❌ Sai — SHA256 không có salt\nconst hash = crypto.createHash('sha256').update(password).digest('hex')\n\n// ✅ Đúng — bcrypt tự thêm salt, chậm có chủ ý\nconst hash = await bcrypt.hash(password, 12)\nconst isValid = await bcrypt.compare(inputPassword, hash)" }
+      ],
+      "examples": [
+        { "title": "Thực tế: Vụ hack 23andMe 2023", "text": "Attacker dùng credential stuffing — thử hàng triệu username/password từ các breach trước đó. Do không có rate limiting và nhiều user dùng lại password, 6.9 triệu hồ sơ DNA bị lộ.", "note": "Không phải lỗ hổng phức tạp — chỉ là thiếu rate limiting và MFA." },
+        { "title": "Session management đúng cách", "text": "Ngoài mật khẩu, session management cũng là nguồn lỗ hổng phổ biến:", "code": "// ❌ Session ID không đổi sau login — session fixation\napp.post('/login', (req, res) => {\n  req.session.userId = user.id  // ID cũ vẫn dùng!\n})\n\n// ✅ Regenerate session sau login\napp.post('/login', (req, res) => {\n  req.session.regenerate((err) => {\n    req.session.userId = user.id\n    res.redirect('/dashboard')\n  })\n})\n\n// Cookie config an toàn\napp.use(session({\n  secret: process.env.SESSION_SECRET,\n  cookie: { httpOnly: true, secure: true, sameSite: 'strict' },\n  resave: false,\n  saveUninitialized: false\n}))", "language": "javascript" }
+      ],
+      "bestPractices": "Xác thực đúng cách đòi hỏi nhiều lớp: mật khẩu mạnh + hash đúng + session an toàn + MFA + rate limiting.",
+      "bestPracticesList": [
+        "Hash password với bcrypt (cost≥10) hoặc argon2 — không dùng MD5, SHA1.",
+        "Bắt buộc MFA cho tài khoản admin và cho phép MFA optional với user thường.",
+        "Implement rate limiting và account lockout sau N lần đăng nhập thất bại.",
+        "Invalidate session token ngay khi logout — không chỉ xóa cookie phía client.",
+        "Regenerate session ID sau khi đăng nhập thành công để chống session fixation.",
+        "Set cookie với HttpOnly, Secure, SameSite=Strict để bảo vệ session token."
+      ],
+      "quiz": {
+        "question": "Hàm nào phù hợp nhất để lưu mật khẩu người dùng vào database?",
+        "options": ["base64_encode(password) — vì encode trông giống mã hóa", "md5(password) — nhanh và đủ dùng cho mật khẩu", "sha256(password + secret_key) — thêm key cho an toàn hơn", "bcrypt(password, cost=12) — chậm có chủ ý, có salt tự động"],
+        "correct": 3,
+        "explanation": "bcrypt (và argon2) được thiết kế chậm để chống brute force. Cost factor 12 mất ~250ms/hash — làm brute force bất khả thi. MD5/SHA256 quá nhanh: GPU hiện đại crack được hàng tỷ hash/giây. Base64 không phải hash — là encoding, decode được ngay."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A08",
+      "name": "Software and Data Integrity Failures",
+      "shortDesc": "Không xác minh tính toàn vẹn của code và data — dẫn đến supply chain attack.",
+      "concept": "Lỗ hổng xảy ra khi ứng dụng tin tưởng vào các plugin, thư viện, update mà không xác minh chữ ký số hoặc checksum. Bao gồm cả insecure deserialization — deserialize dữ liệu không tin cậy có thể dẫn đến RCE.",
+      "conceptDetails": [
+        { "type": "text", "content": "Supply chain attack ngày càng phổ biến: thay vì tấn công trực tiếp vào ứng dụng, attacker tấn công vào dependency — thêm code độc hại vào thư viện được dùng rộng rãi." },
+        { "type": "callout", "variant": "danger", "content": "SolarWinds 2020: Attacker xâm nhập build pipeline của SolarWinds và thêm backdoor vào phần mềm Orion. Bản update được ký chữ ký số hợp lệ được phân phối đến 18,000 tổ chức, bao gồm các cơ quan chính phủ Mỹ." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Load script từ CDN không có integrity check\n<script src=\"https://cdn.example.com/jquery.min.js\"></script>\n\n// ✅ Subresource Integrity (SRI) — browser verify hash trước khi chạy\n<script\n  src=\"https://cdn.example.com/jquery.min.js\"\n  integrity=\"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC\"\n  crossorigin=\"anonymous\"\n></script>\n// Nếu file bị tamper → hash không khớp → browser từ chối chạy" },
+        { "type": "callout", "variant": "warning", "content": "Insecure Deserialization: deserialize data từ cookie hoặc request body mà không validate có thể cho phép attacker inject object tùy ý — thường dẫn đến Remote Code Execution." }
+      ],
+      "examples": [
+        { "title": "Thực tế: event-stream npm package 2018", "text": "Maintainer chuyển quyền sở hữu package cho người lạ. Người này thêm code độc hại nhắm vào ví Bitcoin của Copay — một ứng dụng dùng event-stream. Package được download hàng triệu lần trước khi bị phát hiện.", "note": "Vụ này thúc đẩy npm thêm nhiều tính năng security hơn và cộng đồng chú ý hơn đến quyền sở hữu package." },
+        { "title": "Xác minh checksum khi download dependency", "text": "Luôn xác minh file download trước khi chạy:", "code": "# Kiểm tra SHA256 checksum của file download\n# Linux/Mac:\nsha256sum node-v20.0.0-linux-x64.tar.gz\n# So sánh với checksum chính thức từ trang download\n\n# npm lock file — đảm bảo version nhất quán\nnpm ci  # dùng package-lock.json, không update\n\n# Không dùng npm install trong CI (có thể lấy version mới hơn)\n# Luôn dùng npm ci trong CI/CD pipeline", "language": "bash" }
+      ],
+      "bestPractices": "Không tin tưởng bất cứ thứ gì từ bên ngoài mà không xác minh tính toàn vẹn.",
+      "bestPracticesList": [
+        "Dùng Subresource Integrity (SRI) cho tất cả script/style load từ CDN.",
+        "Dùng npm ci thay npm install trong CI/CD để đảm bảo reproducible build.",
+        "Không deserialize object từ nguồn không tin cậy — dùng JSON thay binary serialization.",
+        "Ký số tất cả artifact (Docker image, release binary) và verify khi deploy.",
+        "Monitor dependency changes — cảnh báo khi maintainer thay đổi hoặc package bị unpublish.",
+        "Dùng private registry mirror để control dependency trong môi trường enterprise."
+      ],
+      "quiz": {
+        "question": "Ứng dụng load jQuery từ CDN: <script src='cdn.jquery.com/jquery.min.js'>. Attacker compromise CDN và thay thế file. Cơ chế nào ngăn được attack này?",
+        "options": ["HTTPS — vì kết nối đã được mã hóa", "Subresource Integrity (SRI) — browser verify hash của file", "Content-Security-Policy — chặn script từ domain lạ", "X-Frame-Options — ngăn iframe injection"],
+        "correct": 1,
+        "explanation": "HTTPS mã hóa kết nối nhưng không ngăn CDN bị compromise — file vẫn được serve qua HTTPS, chỉ là file độc hại. SRI cho phép bạn embed hash của file dự kiến — browser tự động so sánh và từ chối chạy nếu hash không khớp."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A09",
+      "name": "Security Logging and Monitoring Failures",
+      "shortDesc": "Thiếu log và monitoring khiến các cuộc tấn công không được phát hiện kịp thời.",
+      "concept": "Logging và monitoring không ngăn tấn công xảy ra — nhưng quyết định bạn phát hiện và phản ứng trong vài phút hay vài tháng. Trung bình phải mất 207 ngày để phát hiện một data breach (IBM 2023).",
+      "conceptDetails": [
+        { "type": "callout", "variant": "info", "content": "207 ngày là thời gian trung bình để phát hiện breach (IBM Cost of Data Breach Report 2023). Thêm 70 ngày để contain. Trong thời gian đó attacker có thể làm gì tùy ý." },
+        { "type": "text", "content": "Những gì cần log: tất cả authentication event (login thành công/thất bại), access control failure, input validation failure, các hành động có đặc quyền cao (tạo admin, thay đổi permission), exception và lỗi hệ thống." },
+        { "type": "code", "language": "javascript", "content": "// ❌ Không log gì — xảy ra tấn công cũng không biết\napp.post('/login', async (req, res) => {\n  const user = await authenticate(req.body)\n  if (!user) return res.status(401).json({ error: 'Invalid credentials' })\n  // ...\n})\n\n// ✅ Log có cấu trúc — dễ search và alert\napp.post('/login', async (req, res) => {\n  const user = await authenticate(req.body)\n  if (!user) {\n    logger.warn({\n      event: 'LOGIN_FAILURE',\n      username: req.body.username,\n      ip: req.ip,\n      userAgent: req.headers['user-agent'],\n      timestamp: new Date().toISOString()\n    })\n    // Alert nếu >5 failures trong 60 giây từ cùng IP\n    await checkAndAlert('login_failure', req.ip)\n    return res.status(401).json({ error: 'Invalid credentials' })\n  }\n  logger.info({ event: 'LOGIN_SUCCESS', userId: user.id, ip: req.ip })\n})" },
+        { "type": "callout", "variant": "warning", "content": "Cẩn thận không log dữ liệu nhạy cảm: password, credit card, token, PII. Log quá nhiều cũng là vấn đề — cần balance giữa detail và privacy." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Target breach 2013 — phát hiện quá muộn", "text": "Target có hệ thống security monitoring phát hiện malware — nhưng cảnh báo bị bỏ qua. Attacker duy trì access trong 3 tuần, đánh cắp 40 triệu thẻ tín dụng. FBI phát hiện và thông báo cho Target — không phải ngược lại.", "note": "Có monitoring nhưng không có quy trình response hiệu quả thì cũng vô nghĩa." },
+        { "title": "Structured logging và alerting", "text": "Log có cấu trúc (JSON) dễ query và tạo alert hơn log dạng text:", "code": "// Structured log — dễ filter và aggregate\n{\n  \"timestamp\": \"2024-01-15T10:23:45Z\",\n  \"level\": \"WARN\",\n  \"event\": \"ACCESS_CONTROL_FAILURE\",\n  \"userId\": 1234,\n  \"resource\": \"/api/admin/users\",\n  \"method\": \"GET\",\n  \"ip\": \"192.168.1.100\",\n  \"result\": \"FORBIDDEN\"\n}\n\n// Alert rule trong Grafana/CloudWatch:\n// IF count(event='ACCESS_CONTROL_FAILURE') > 10\n// WHERE window = 5 minutes\n// GROUP BY userId\n// THEN alert('Potential privilege escalation attempt')", "language": "json" }
+      ],
+      "bestPractices": "Log đủ để phát hiện và điều tra tấn công. Monitor để phản ứng kịp thời.",
+      "bestPracticesList": [
+        "Log tất cả authentication, authorization failure, và privileged action với context đầy đủ.",
+        "Dùng structured logging (JSON) thay plain text — dễ search và phân tích.",
+        "Centralize log vào SIEM (Splunk, ELK, CloudWatch) — không để log chỉ trên từng server.",
+        "Tạo alert cho các pattern đáng ngờ: nhiều login failure, access control violation, scan.",
+        "Không log sensitive data: password, token, credit card, PII.",
+        "Đảm bảo log không thể bị xóa bởi attacker — write-once storage hoặc remote syslog."
+      ],
+      "quiz": {
+        "question": "Attacker brute force thành công tài khoản admin sau 50,000 lần thử trong 2 giờ. Team security phát hiện 3 tháng sau khi khách hàng báo cáo dữ liệu bị lộ. Nguyên nhân chính của sự chậm trễ là gì?",
+        "options": ["Attacker dùng VPN nên không trace được IP", "Không có alert cho nhiều lần login thất bại liên tiếp", "Brute force xảy ra ngoài giờ làm việc nên không ai thấy", "Tài khoản admin không có 2FA"],
+        "correct": 1,
+        "explanation": "50,000 login failure trong 2 giờ là signal rất rõ ràng — nhưng không có alert nên không ai biết. Thiếu monitoring là lỗ hổng A09. Thiếu rate limiting và 2FA là A07, nhưng câu hỏi hỏi về lý do phát hiện chậm — đó là monitoring failure."
+      },
+      "tryAndCode": null
+    },
+    {
+      "id": "A10",
+      "name": "Server-Side Request Forgery (SSRF)",
+      "shortDesc": "Ứng dụng fetch URL từ input người dùng mà không validate — attacker truy cập hệ thống nội bộ.",
+      "concept": "SSRF xảy ra khi ứng dụng thực hiện HTTP request đến URL do người dùng cung cấp mà không validate. Attacker có thể dùng server như proxy để truy cập internal network, metadata service, hoặc các service không expose ra internet.",
+      "conceptDetails": [
+        { "type": "text", "content": "Tại sao SSRF nguy hiểm đặc biệt trên cloud? Mọi EC2 instance trên AWS đều có thể truy cập http://169.254.169.254 để lấy metadata — bao gồm IAM credentials. Một SSRF đơn giản có thể cho attacker full access vào AWS account của bạn." },
+        { "type": "code", "language": "javascript", "content": "// Tính năng: tạo screenshot từ URL\napp.post('/screenshot', async (req, res) => {\n  const { url } = req.body  // ❌ không validate!\n  const screenshot = await puppeteer.screenshot(url)\n  // Attacker nhập: http://169.254.169.254/latest/meta-data/iam/credentials\n  // → Server gọi đến metadata service và trả về AWS credentials!\n  res.json({ screenshot })\n})\n\n// ✅ Validate URL trước khi fetch\nasync function validateUrl(url) {\n  const parsed = new URL(url)\n  // Chỉ cho phép HTTPS và domain public\n  if (parsed.protocol !== 'https:') throw new Error('Only HTTPS allowed')\n  // Resolve DNS và kiểm tra không phải IP private\n  const ip = await dns.resolve4(parsed.hostname)\n  if (isPrivateIP(ip[0])) throw new Error('Private IP not allowed')\n  return url\n}" },
+        { "type": "callout", "variant": "danger", "content": "AWS đã ra mắt IMDSv2 để giảm thiểu SSRF tấn công vào metadata service — yêu cầu PUT request với token thay vì GET đơn giản. Nhưng nhiều hệ thống vẫn dùng IMDSv1." }
+      ],
+      "examples": [
+        { "title": "Thực tế: Capital One breach 2019 (chi tiết kỹ thuật)", "text": "WAF của Capital One chạy trên EC2 có tính năng cho phép query URL ngoài. Attacker gửi request đến metadata service (169.254.169.254), lấy IAM credentials của EC2 role, dùng credentials đó để list và download S3 buckets. 100 triệu hồ sơ bị lộ.", "note": "Đây là ví dụ hoàn hảo về SSRF + Broken Access Control (IAM role quá rộng) kết hợp." },
+        { "title": "Các vector SSRF phổ biến", "text": "SSRF không chỉ xảy ra với HTTP — bất kỳ tính năng nào fetch URL đều có nguy cơ:", "code": "// Tính năng import ảnh từ URL\nfetch('http://localhost:8080/admin')  // Truy cập admin panel nội bộ\nfetch('http://10.0.0.1/api/secrets') // Truy cập internal service\nfetch('file:///etc/passwd')          // Đọc file trên server\nfetch('dict://localhost:11211/')     // Port scan Memcached\n\n// Webhook validation cũng dễ bị SSRF\n// Attacker đăng ký webhook endpoint là http://internal-service/\n// Server gọi đến để verify → truy cập internal network", "language": "javascript", "note": "Dùng allowlist thay blocklist — định nghĩa rõ những domain nào được phép, không cố gắng block tất cả IP private." }
+      ],
+      "bestPractices": "Không tin tưởng bất kỳ URL nào từ người dùng. Validate và restrict ở nhiều lớp.",
+      "bestPracticesList": [
+        "Dùng allowlist domain — chỉ cho phép fetch từ domain cụ thể, từ chối tất cả còn lại.",
+        "Resolve DNS và kiểm tra IP không phải loopback, link-local, hay private range.",
+        "Disable redirect hoặc validate URL sau mỗi redirect step.",
+        "Chạy fetch service trong network segment riêng, không có access vào internal network.",
+        "Trên AWS: bật IMDSv2 để giảm thiểu SSRF tấn công metadata service.",
+        "Không trả về raw response từ URL người dùng cung cấp về client."
+      ],
+      "quiz": {
+        "question": "Ứng dụng có tính năng 'import avatar từ URL'. Attacker nhập URL: http://169.254.169.254/latest/meta-data/iam/security-credentials/. Server đang chạy trên AWS EC2. Điều gì có thể xảy ra?",
+        "options": ["Server trả về lỗi 404 vì domain không tồn tại", "Browser của attacker bị block vì same-origin policy", "Server fetch URL đó và có thể trả về AWS IAM credentials cho attacker", "Không có gì xảy ra vì HTTPS không được dùng"],
+        "correct": 2,
+        "explanation": "169.254.169.254 là link-local address của AWS EC2 metadata service — chỉ accessible từ trong EC2 instance. Server (chạy trên EC2) fetch URL đó thay cho attacker, nhận được IAM credentials của instance role, và có thể trả về trong response. Đây là SSRF kinh điển dẫn đến cloud privilege escalation."
+      },
+      "tryAndCode": null
+    }
+  ]
+}
