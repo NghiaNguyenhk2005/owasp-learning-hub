@@ -2,12 +2,15 @@ import { Link } from 'react-router-dom'
 import StatusBadge from '@/components/ui/StatusBadge'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { getSeverity, getSeverityStyles } from '@/utils/severity'
+import { estimateReadingTime } from '@/utils/readingTime'
+import { Clock } from 'lucide-react'
 
 export default function LessonCard({ lesson, progress }) {
-  const completed = progress?.completed ?? false
-  const quizScore = progress?.quizScore ?? null
-  const severity  = getSeverity(lesson.id)
-  const styles    = getSeverityStyles(lesson.id)
+  const completed   = progress?.completed ?? false
+  const quizScore   = progress?.quizScore ?? null
+  const severity    = getSeverity(lesson.id)
+  const styles      = getSeverityStyles(lesson.id)
+  const readingMins = estimateReadingTime(lesson)
 
   return (
     <Link
@@ -19,8 +22,8 @@ export default function LessonCard({ lesson, progress }) {
           : `border-gray-200 dark:border-gray-800 ${styles.glow}`
         }`}
     >
-      {/* Severity accent bar trên cùng */}
-      <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl ${styles.accent} ${completed ? 'opacity-30' : 'opacity-80'}`} />
+      {/* Severity accent bar */}
+      <div className={`absolute top-0 left-0 right-0 h-0.5 ${styles.accent} ${completed ? 'opacity-30' : 'opacity-80'}`} />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-3 mt-1">
@@ -50,18 +53,24 @@ export default function LessonCard({ lesson, progress }) {
         </div>
       )}
 
-      {/* Tags */}
-      <div className="flex gap-2 flex-wrap">
-        {lesson.quiz && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-            Quiz
-          </span>
-        )}
-        {lesson.tryAndCode && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
-            Hack It
-          </span>
-        )}
+      {/* Footer: tags + reading time */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {lesson.quiz && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+              Quiz
+            </span>
+          )}
+          {lesson.tryAndCode && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+              Hack It
+            </span>
+          )}
+        </div>
+        <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 shrink-0">
+          <Clock size={11} />
+          ~{readingMins} phút
+        </span>
       </div>
     </Link>
   )

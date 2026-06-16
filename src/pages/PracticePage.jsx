@@ -4,23 +4,26 @@ import useAppStore from '@/store/useAppStore'
 import { getAllLessons } from '@/services/contentService'
 import { generatePracticeSet, checkAnswer, calculateScore } from '@/services/quizService'
 import { saveProgress } from '@/services/progressService'
+import { useConfetti } from '@/utils/useConfetti'
 import Navbar from '@/components/ui/Navbar'
 import ProgressBar from '@/components/ui/ProgressBar'
-import { ChevronLeft, ChevronRight, RotateCcw, Trophy } from 'lucide-react'
+import { getSeverityStyles } from '@/utils/severity'
+import { ChevronLeft, ChevronRight, RotateCcw, BookOpen } from 'lucide-react'
 
 const STATES = { SETUP: 'setup', PLAYING: 'playing', RESULT: 'result' }
 
 export default function PracticePage() {
   const { initDarkMode, loadLessons } = useAppStore()
+  const fireConfetti = useConfetti()
 
-  const [allLessons, setAllLessons] = useState([])
+  const [allLessons, setAllLessons]   = useState([])
   const [questionCount, setQuestionCount] = useState(5)
   const [practiceSet, setPracticeSet] = useState([])
-  const [currentIdx, setCurrentIdx] = useState(0)
-  const [selected, setSelected] = useState(null)
-  const [submitted, setSubmitted] = useState(false)
-  const [answers, setAnswers] = useState([]) // { isCorrect, lessonId }[]
-  const [state, setState] = useState(STATES.SETUP)
+  const [currentIdx, setCurrentIdx]   = useState(0)
+  const [selected, setSelected]       = useState(null)
+  const [submitted, setSubmitted]     = useState(false)
+  const [answers, setAnswers]         = useState([])
+  const [state, setState]             = useState(STATES.SETUP)
 
   useEffect(() => {
     initDarkMode()
@@ -28,8 +31,10 @@ export default function PracticePage() {
   }, [])
 
   const availableCount = allLessons.filter((l) => l.quiz).length
-  const current = practiceSet[currentIdx]
-  const progress = answers.length > 0 ? Math.round((answers.length / practiceSet.length) * 100) : 0
+  const current        = practiceSet[currentIdx]
+  const playProgress   = answers.length > 0 ? Math.round((answers.length / practiceSet.length) * 100) : 0
+  const finalScore     = calculateScore(answers)
+  const wrongAnswers   = answers.filter((a) => !a.isCorrect)
 
   function handleStart() {
     const set = generatePracticeSet(allLessons, questionCount)
@@ -44,11 +49,9 @@ export default function PracticePage() {
   function handleSubmit() {
     if (selected === null) return
     const res = checkAnswer(selected, current.quiz.correct, current.quiz.explanation)
-    const newAnswers = [...answers, { ...res, lessonId: current.lessonId }]
+    const newAnswers = [...answers, { ...res, lessonId: current.lessonId, question: current.quiz.question }]
     setAnswers(newAnswers)
     setSubmitted(true)
-
-    // Cập nhật progress nếu đúng
     if (res.isCorrect) {
       saveProgress(current.lessonId, { completed: true, quizScore: 100 })
       loadLessons()
@@ -58,6 +61,7 @@ export default function PracticePage() {
   function handleNext() {
     if (currentIdx + 1 >= practiceSet.length) {
       setState(STATES.RESULT)
+      if (finalScore.percent >= 80) fireConfetti()
     } else {
       setCurrentIdx((i) => i + 1)
       setSelected(null)
@@ -74,39 +78,30 @@ export default function PracticePage() {
     setSubmitted(false)
   }
 
-  const finalScore = calculateScore(answers)
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <Navbar />
-      <main className="max-w-2xl mx-auto px-4 py-10">
+      <main className="max-w-2xl mx-auto px-4 py-10 page-enter">
 
-        {/* Breadcrumb */}
         <Link
           to="/"
           className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors mb-8"
         >
-          <ChevronLeft size={16} />
-          Trang chủ
+          <ChevronLeft size={16} /> Trang chủ
         </Link>
 
         {/* ── SETUP ── */}
         {state === STATES.SETUP && (
           <div className="space-y-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                🎯 Luyện tập tổng hợp
-              </h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">🎯 Luyện tập tổng hợp</h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm">
                 Câu hỏi ngẫu nhiên từ tất cả bài học. Kiểm tra kiến thức của bạn.
               </p>
             </div>
-
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Số câu hỏi
-                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Số câu hỏi</label>
                 <div className="flex gap-2">
                   {[3, 5, 10].filter((n) => n <= availableCount).map((n) => (
                     <button
@@ -122,11 +117,8 @@ export default function PracticePage() {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  Hiện có {availableCount} câu hỏi từ {availableCount} bài học.
-                </p>
+                <p className="text-xs text-gray-400 mt-2">Hiện có {availableCount} câu hỏi.</p>
               </div>
-
               <button
                 onClick={handleStart}
                 disabled={availableCount === 0}
@@ -141,18 +133,16 @@ export default function PracticePage() {
         {/* ── PLAYING ── */}
         {state === STATES.PLAYING && current && (
           <div className="space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 Câu {currentIdx + 1} / {practiceSet.length}
               </span>
-              <span className="text-xs font-mono px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400">
+              <span className={`text-xs font-mono px-2 py-1 rounded-lg ${getSeverityStyles(current.lessonId).badge}`}>
                 {current.lessonId}
               </span>
             </div>
-            <ProgressBar percent={progress} />
+            <ProgressBar percent={playProgress} />
 
-            {/* Question card */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-5">
               <p className="font-medium text-gray-800 dark:text-gray-200 leading-relaxed">
                 {current.quiz.question}
@@ -174,12 +164,7 @@ export default function PracticePage() {
                       style += 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500'
                   }
                   return (
-                    <button
-                      key={idx}
-                      onClick={() => !submitted && setSelected(idx)}
-                      disabled={submitted}
-                      className={style}
-                    >
+                    <button key={idx} onClick={() => !submitted && setSelected(idx)} disabled={submitted} className={style}>
                       <span className="font-mono text-xs mr-2 opacity-60">{String.fromCharCode(65 + idx)}.</span>
                       {opt}
                     </button>
@@ -187,7 +172,6 @@ export default function PracticePage() {
                 })}
               </div>
 
-              {/* Explanation */}
               {submitted && (
                 <div className={`px-4 py-3 rounded-xl border text-sm leading-relaxed ${
                   answers[answers.length - 1]?.isCorrect
@@ -199,7 +183,6 @@ export default function PracticePage() {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-3 pt-1">
                 {!submitted ? (
                   <button
@@ -241,10 +224,8 @@ export default function PracticePage() {
                   {finalScore.score}/{finalScore.total}
                 </p>
                 <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                  {finalScore.percent >= 80
-                    ? 'Xuất sắc! Bạn nắm vững kiến thức này.'
-                    : finalScore.percent >= 50
-                    ? 'Khá tốt! Ôn lại những bài làm sai nhé.'
+                  {finalScore.percent >= 80 ? 'Xuất sắc! Bạn nắm vững kiến thức này.'
+                    : finalScore.percent >= 50 ? 'Khá tốt! Ôn lại những bài làm sai nhé.'
                     : 'Cần ôn thêm. Đọc lại lý thuyết và thử lại.'}
                 </p>
               </div>
@@ -253,23 +234,54 @@ export default function PracticePage() {
               </div>
             </div>
 
-            {/* Chi tiết từng câu */}
+            {/* Ôn lại bài sai */}
+            {wrongAnswers.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 px-1 flex items-center gap-2">
+                  <BookOpen size={14} />
+                  Ôn lại bài làm sai ({wrongAnswers.length} bài)
+                </p>
+                {wrongAnswers.map((ans, i) => {
+                  const styles = getSeverityStyles(ans.lessonId)
+                  return (
+                    <Link
+                      key={i}
+                      to={`/lesson/${ans.lessonId}`}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors group"
+                    >
+                      <span className="text-red-500 shrink-0">✗</span>
+                      <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${styles.badge}`}>
+                        {ans.lessonId}
+                      </span>
+                      <span className="text-sm text-red-800 dark:text-red-300 flex-1 truncate">
+                        {ans.explanation}
+                      </span>
+                      <span className="text-xs text-red-400 dark:text-red-500 shrink-0 group-hover:text-brand-500 transition-colors">
+                        Ôn lại →
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Chi tiết tất cả câu */}
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400 px-1">Chi tiết</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400 px-1">Toàn bộ kết quả</p>
               {answers.map((ans, i) => (
                 <div
                   key={i}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm ${
                     ans.isCorrect
-                      ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10 text-green-800 dark:text-green-300'
-                      : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 text-red-800 dark:text-red-300'
+                      ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10'
+                      : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10'
                   }`}
                 >
-                  <span>{ans.isCorrect ? '✓' : '✗'}</span>
-                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-white/60 dark:bg-black/20">
+                  <span className={ans.isCorrect ? 'text-green-600' : 'text-red-500'}>{ans.isCorrect ? '✓' : '✗'}</span>
+                  <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${getSeverityStyles(ans.lessonId).badge}`}>
                     {ans.lessonId}
                   </span>
-                  <span className="text-xs opacity-80 truncate">{ans.explanation}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{ans.explanation}</span>
                 </div>
               ))}
             </div>
@@ -280,8 +292,7 @@ export default function PracticePage() {
                 onClick={handleRestart}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-medium transition-colors"
               >
-                <RotateCcw size={16} />
-                Làm lại
+                <RotateCcw size={16} /> Làm lại
               </button>
               <Link
                 to="/"
