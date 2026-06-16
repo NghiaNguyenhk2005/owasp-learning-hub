@@ -5,6 +5,8 @@ import Navbar from '@/components/ui/Navbar'
 import ProgressBar from '@/components/ui/ProgressBar'
 import LessonCard from '@/components/features/LessonCard'
 import { exportProgress, resetProgress } from '@/services/progressService'
+import PlanningPanel from '@/components/features/PlanningPanel'
+import { LessonCardSkeleton } from '@/components/ui/Skeleton'
 
 export default function HomePage() {
   const { lessons, progress, completionPercent, isLoading, error, loadLessons, resetAllProgress, initDarkMode } =
@@ -47,8 +49,15 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400 animate-pulse">Đang tải...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <Navbar />
+        <main className="max-w-6xl mx-auto px-4 py-10">
+          <div className="h-8 w-48 rounded-lg bg-gray-200 dark:bg-gray-800 animate-pulse mb-2" />
+          <div className="h-4 w-96 rounded-lg bg-gray-200 dark:bg-gray-800 animate-pulse mb-10" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => <LessonCardSkeleton key={i} />)}
+          </div>
+        </main>
       </div>
     )
   }
@@ -129,6 +138,11 @@ export default function HomePage() {
               {tab.label}
             </button>
           ))}
+        </div>
+
+        {/* Planning panel */}
+        <div className="mb-8">
+          <PlanningPanel />
         </div>
 
         {/* Lesson grid */}

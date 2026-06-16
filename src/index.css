@@ -2,8 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* highlight.js themes — light/dark */
+@import 'highlight.js/styles/github.css' layer(hljs-light);
+@import 'highlight.js/styles/github-dark.css' layer(hljs-dark);
+
+@layer hljs-light {
+  .hljs { background: transparent !important; }
+}
+@layer hljs-dark {
+  .dark .hljs { background: transparent !important; }
+}
+
+/* Chỉ áp dụng đúng theme theo dark mode */
+.dark .hljs-light-only  { display: none; }
+:not(.dark) .hljs-dark-only { display: none; }
+
 @layer base {
   body {
     @apply bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 transition-colors duration-200;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Ẩn scrollbar nhưng vẫn scroll được */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  /* Tab content fade-in animation */
+  .tab-content-enter {
+    animation: tabFadeIn 0.15s ease-out;
+  }
+
+  @keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Line clamp */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }

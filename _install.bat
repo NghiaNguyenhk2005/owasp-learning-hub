@@ -1,0 +1,1 @@
+cd D:\WEB\CV_project && npm install highlight.js canvas-confetti
